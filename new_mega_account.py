@@ -6,18 +6,27 @@ import random
 import string
 import csv
 import threading
+import sys
 
-# Install megatools
-!apt-get update
-!apt-get install -y megatools
+def install_megatools():
+    print("Installing megatools...")
+    subprocess.run(["apt-get", "update"], check=True)
+    subprocess.run(["apt-get", "install", "-y", "megatools"], check=True)
+    
+    # Find the path to megatools
+    result = subprocess.run(["which", "megatools"], capture_output=True, text=True, check=True)
+    return result.stdout.strip()
 
-# Find the path to megatools
-MEGATOOLS_PATH = !which megatools
-MEGATOOLS_PATH = MEGATOOLS_PATH[0].strip()
+# Install megatools and get its path
+MEGATOOLS_PATH = install_megatools()
+print(f"Megatools installed at: {MEGATOOLS_PATH}")
 
 PASSWORD = "examplepassword"  # at least 8 chars
 
-# ... [previous code remains the same] ...
+def find_url(string):
+    regex = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»""'']))"
+    url = re.findall(regex, string)
+    return [x[0] for x in url]
 
 class MegaAccount:
     def __init__(self, name, password):
@@ -52,7 +61,58 @@ class MegaAccount:
 
         self.verify_command = registration.stdout
 
-    # ... [rest of the code remains the same] ...
+    def verify(self):
+        # check if there is mail
+        mail_id = None
+        for i in range(5):
+            if mail_id is not None:
+                break
+            time.sleep(10)
+            check_mail = requests.get(
+                f"https://api.guerrillamail.com/ajax.php?f=get_email_list&offset=0&sid_token={self.email_token}"
+            ).json()
+            for email in check_mail["list"]:
+                if "MEGA" in email["mail_subject"]:
+                    mail_id = email["mail_id"]
+                    break
+
+        # get verification link
+        if mail_id is None:
+            return
+        view_mail = requests.get(
+            f"https://api.guerrillamail.com/ajax.php?f=fetch_email&email_id={mail_id}&sid_token={self.email_token}"
+        )
+        mail_body = view_mail.json()["mail_body"]
+        links = find_url(mail_body)
+
+        self.verify_command = str(self.verify_command).replace("@LINK@", links[2])
+
+        # perform verification
+        verification = subprocess.run(
+            self.verify_command,
+            shell=True,
+            check=True,
+            stdout=subprocess.PIPE,
+            universal_newlines=True,
+        )
+        if "registered successfully!" in str(verification.stdout):
+            print("Success. Acc Deets are:")
+            print(f"{self.email} - {self.password}")
+
+            # save to file
+            with open("accounts.csv", "a") as csvfile:
+                csvwriter = csv.writer(csvfile)
+                # last column is for purpose (to be edited manually if required)
+                csvwriter.writerow([self.email, self.password, self.name, "-"])
+        else:
+            print("Failed.")
+
+def new_account():
+    name = "".join(random.choice(string.ascii_letters) for x in range(12))
+    acc = MegaAccount(name, PASSWORD)
+    acc.register()
+    print("Registered. Waiting for verification email...")
+    acc.verify()
 
 if __name__ == "__main__":
     # how many accounts to create at once (keep the number under 10)
