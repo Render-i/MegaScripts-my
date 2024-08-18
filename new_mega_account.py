@@ -109,7 +109,7 @@ def new_account():
 
 if __name__ == "__main__":
     # how many accounts to create at once (keep the number under 10)
-    num_acc = 5
+    num_acc = 2
     for count in range(num_acc):
         t = threading.Thread(target=new_account)
         t.start()
