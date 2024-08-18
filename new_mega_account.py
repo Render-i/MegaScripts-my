@@ -82,7 +82,50 @@ class MegaAccount:
         self.verify_command = registration.stdout
 
     def verify(self):
-        # ... [rest of the code remains the same] ...
+        # check if there is mail
+        mail_id = None
+        for i in range(5):
+            if mail_id is not None:
+                break
+            time.sleep(10)
+            check_mail = requests.get(
+                f"https://api.guerrillamail.com/ajax.php?f=get_email_list&offset=0&sid_token={self.email_token}"
+            ).json()
+            for email in check_mail["list"]:
+                if "MEGA" in email["mail_subject"]:
+                    mail_id = email["mail_id"]
+                    break
+
+        # get verification link
+        if mail_id is None:
+            return
+        view_mail = requests.get(
+            f"https://api.guerrillamail.com/ajax.php?f=fetch_email&email_id={mail_id}&sid_token={self.email_token}"
+        )
+        mail_body = view_mail.json()["mail_body"]
+        links = find_url(mail_body)
+
+        self.verify_command = str(self.verify_command).replace("@LINK@", links[2])
+
+        # perform verification
+        verification = subprocess.run(
+            self.verify_command,
+            shell=True,
+            check=True,
+            stdout=subprocess.PIPE,
+            universal_newlines=True,
+        )
+        if "registered successfully!" in str(verification.stdout):
+            print("Success. Acc Deets are:")
+            print(f"{self.email} - {self.password}")
+
+            # save to file
+            with open("accounts.csv", "a") as csvfile:
+                csvwriter = csv.writer(csvfile)
+                # last column is for purpose (to be edited manually if required)
+                csvwriter.writerow([self.email, self.password, self.name, "-"])
+        else:
+            print("Failed.")
 
 def new_account():
     name = "".join(random.choice(string.ascii_letters) for x in range(12))
